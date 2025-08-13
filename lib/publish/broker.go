@@ -6,6 +6,7 @@ import (
 	"github.com/ApnanJuanda/transjakarta/domain/api/vehicle/model"
 	"github.com/ApnanJuanda/transjakarta/lib/env"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"gorm.io/gorm"
 	"log"
 	"regexp"
@@ -22,6 +23,16 @@ func SetupBroker() (client mqtt.Client, err error) {
 		log.Println("ERROR CONNECT TO MQTT: ", token.Error())
 		return
 	}
+	return
+}
+
+func SetupRabbitMQ() (ch *amqp.Channel, err error) {
+	conn, err := amqp.Dial(env.String("RABBITMQ_URL", "amqp://guest:guest@localhost:5672"))
+	if err != nil {
+		log.Println("Failed to connect RabbitMQ:", err)
+		return
+	}
+	ch, err = conn.Channel()
 	return
 }
 
@@ -83,4 +94,68 @@ func validateDataPayload(data model.Vehiclelocations) (result bool) {
 	}
 	result = true
 	return
+}
+
+func ReceiveDataFromRabbitMQ(ch *amqp.Channel) {
+	err := ch.ExchangeDeclare(
+		"fleet.events",
+		"direct",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		log.Println("Failed to declare exchange:", err)
+	}
+
+	q, err := ch.QueueDeclare(
+		"geofence_alerts",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		log.Println("Failed to declare queue:", err)
+	}
+
+	err = ch.QueueBind(
+		q.Name,
+		"geofence.alert",
+		"fleet.events",
+		false,
+		nil,
+	)
+	if err != nil {
+		log.Println("Failed to bind queue:", err)
+	}
+
+	// consume message
+	msgs, err := ch.Consume(
+		q.Name,
+		"",
+		true, // auto-ack
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		log.Println("Failed to register consumer:", err)
+		return
+	}
+	go func() {
+		for d := range msgs {
+			var event model.GeofenceEvent
+			err := json.Unmarshal(d.Body, &event)
+			if err != nil {
+				log.Println("Failed to unmarshal message: ", err)
+				continue
+			}
+			log.Printf("Received geofence event: %v\n", string(d.Body))
+		}
+	}()
 }

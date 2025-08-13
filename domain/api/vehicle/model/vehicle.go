@@ -8,6 +8,15 @@ type (
 		Timestamp int64   `json:"timestamp"`
 	}
 
+	VehicleLocationPayload struct {
+		VehicleId string  `json:"vehicle_id"`
+		Latitude  float64 `json:"latitude"`
+		Longitude float64 `json:"longitude"`
+		Timestamp int64   `json:"timestamp"`
+		DestLat   float64 `json:"dest_lat"`
+		DestLon   float64 `json:"dest_lon"`
+	}
+
 	VehicleHistoryReq struct {
 		VehicleId string `json:"vehicle_id"`
 		StartTime int64  `json:"start_time"`
@@ -23,5 +32,17 @@ type (
 		DestLat    float64 `json:"dest_lat"`
 		DestLon    float64 `json:"dest_lon"`
 		Radius     int     `json:"radius"`
+	}
+
+	Location struct {
+		Latitude  float64 `json:"latitude"`
+		Longitude float64 `json:"longitude"`
+	}
+
+	GeofenceEvent struct {
+		VehicleId string   `json:"vehicle_id"`
+		Event     string   `json:"event"`
+		Location  Location `json:"location"`
+		Timestamp int64    `json:"timestamp"`
 	}
 )

@@ -6,10 +6,11 @@ import (
 	"github.com/ApnanJuanda/transjakarta/lib/env"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gin-gonic/gin"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"gorm.io/gorm"
 )
 
-func Router(DB *gorm.DB, client mqtt.Client) error {
+func Router(DB *gorm.DB, client mqtt.Client, channel *amqp.Channel) error {
 	router := gin.Default()
 	corsConfig(router)
 
@@ -18,7 +19,7 @@ func Router(DB *gorm.DB, client mqtt.Client) error {
 	loyaltyGroup.GET("/", root.Index)
 
 	api := loyaltyGroup.Group("/api")
-	collection.ApiRouter(DB, client, api)
+	collection.ApiRouter(DB, client, channel, api)
 
 	if err := router.Run(); err != nil {
 		return err

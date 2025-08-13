@@ -19,13 +19,25 @@ func main() {
 		}
 	}()
 
+	channel, err := publish.SetupRabbitMQ()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() {
+		if err = channel.Close(); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
 	client, err := publish.SetupBroker()
 	if err != nil {
 		log.Fatal(err)
 	}
-	publish.SetupSubscriber(gormDB)
 
-	if err = config.Router(gormDB, client); err != nil {
+	publish.SetupSubscriber(gormDB)
+	publish.ReceiveDataFromRabbitMQ(channel)
+
+	if err = config.Router(gormDB, client, channel); err != nil {
 		log.Fatal(err)
 	}
 }

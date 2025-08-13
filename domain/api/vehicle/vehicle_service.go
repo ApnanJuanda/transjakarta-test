@@ -7,7 +7,9 @@ import (
 	"github.com/ApnanJuanda/transjakarta/domain/api/vehicle/model"
 	"github.com/ApnanJuanda/transjakarta/domain/api/vehicle/repository"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"log"
+	"math"
 	"net/http"
 	"time"
 )
@@ -18,17 +20,20 @@ type VehicleServiceInterface interface {
 	GetHistoryVehicleLocation(req model.VehicleHistoryReq) (datas []model.Vehiclelocations, totalData int64, statusCode int, err error)
 	StartPublishData(req model.VehicleLocationPublishReq)
 	StopPublishData()
+	MoveToDestination(startLat, startLon, destLat, destLon float64) (newLat, newLon float64)
 }
 
 type vehicleService struct {
 	Repository repository.VehicleLocationRepositoryInterface
 	Client     mqtt.Client
+	Channel    *amqp.Channel
 }
 
-func NewVehicleService(repository repository.VehicleLocationRepositoryInterface, client mqtt.Client) VehicleServiceInterface {
+func NewVehicleService(repository repository.VehicleLocationRepositoryInterface, client mqtt.Client, channel *amqp.Channel) VehicleServiceInterface {
 	return &vehicleService{
 		Repository: repository,
 		Client:     client,
+		Channel:    channel,
 	}
 }
 
@@ -98,7 +103,10 @@ func (s *vehicleService) StartPublishData(req model.VehicleLocationPublishReq) {
 				log.Println("PUBLISHER STOP")
 				return
 			default:
-				curLat, curLon = moveToDestination(curLat, curLon, req.DestLat, req.DestLon)
+				curLat, curLon = s.MoveToDestination(curLat, curLon, req.DestLat, req.DestLon)
+				if !pubActive {
+					break
+				}
 				data := model.Vehiclelocations{
 					VehicleId: req.VehicleId,
 					Latitude:  curLat,
@@ -117,6 +125,14 @@ func (s *vehicleService) StartPublishData(req model.VehicleLocationPublishReq) {
 					continue
 				}
 				log.Printf("SUCCESS publish %v TO topic %s ", string(payload), topic)
+
+				// push to rabbitMQ
+				distance := calculateDistance(data.Latitude, data.Longitude, req.DestLat, req.DestLon)
+				log.Printf("INFO distance: %v meter", distance)
+				if distance <= 50 {
+					s.PublishEventToRabbitMQ(data)
+				}
+
 				time.Sleep(2 * time.Second)
 			}
 		}
@@ -133,12 +149,92 @@ func (s *vehicleService) StopPublishData() {
 	return
 }
 
-func moveToDestination(startLat, startLon, destLat, destLon float64) (newLat, newLon float64) {
+func (s *vehicleService) MoveToDestination(startLat, startLon, destLat, destLon float64) (newLat, newLon float64) {
+	stepFraction := 0.8
 	dLat := destLat - startLat
 	dLon := destLon - startLon
 
-	stepFraction := 0.1
+	if dLat == 0 && dLon == 0 {
+		s.StopPublishData()
+		return
+	}
 	newLat = startLat + dLat*stepFraction
 	newLon = startLon + dLon*stepFraction
 	return
+}
+
+func calculateDistance(curLat, curLon, destLat, destLon float64) (distance float64) {
+	const earthRaidus = 6371000 // m
+	dLat := (destLat - curLat) * math.Pi / 180.0
+	dLon := (destLon - curLon) * math.Pi / 180.0
+
+	lat1Rad := curLat * math.Pi / 180.0
+	lat2Rad := destLat * math.Pi / 180.0
+
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
+		math.Cos(lat1Rad)*math.Cos(lat2Rad)*math.Sin(dLon/2)*math.Sin(dLon/2)
+
+	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+	distance = earthRaidus * c
+	return
+}
+
+func (s *vehicleService) PublishEventToRabbitMQ(data model.Vehiclelocations) {
+	err := s.Channel.ExchangeDeclare(
+		"fleet.events",
+		"direct",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		log.Printf("Failed to declare exchange: %v", err)
+		return
+	}
+
+	q, err := s.Channel.QueueDeclare("geofence_alerts", true, false, false, false, nil)
+	if err != nil {
+		log.Println("Failed to declare queue:", err)
+		return
+	}
+	err = s.Channel.QueueBind(q.Name, "geofence.alert", "fleet.events", false, nil)
+	if err != nil {
+		log.Println("Failed to bind queue:", err)
+		return
+	}
+
+	// create payload
+	event := model.GeofenceEvent{
+		VehicleId: data.VehicleId,
+		Event:     "geofence_entry",
+		Location: model.Location{
+			Latitude:  data.Latitude,
+			Longitude: data.Longitude,
+		},
+		Timestamp: data.Timestamp,
+	}
+
+	// Send message
+	body, _ := json.Marshal(event)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = s.Channel.PublishWithContext(
+		ctx,
+		"fleet.events",
+		"geofence.alert",
+		false,
+		false,
+		amqp.Publishing{
+			ContentType: "application/json",
+			Body:        body,
+		},
+	)
+	if err != nil {
+		log.Printf("Failed to publish a message: %v", err)
+		return
+	}
+	log.Printf("Geofence event sent to RabbitMQ: %v", string(body))
 }

@@ -32,7 +32,7 @@ func (r *vehicleLocationRepository) GetLatestVehicleLocation(vehicleId string) (
 
 func (r *vehicleLocationRepository) GetHistoryVehicleLocation(req model.VehicleHistoryReq) (responses []model.Vehiclelocations, totalRow int64, err error) {
 	err = r.DB.Table("vehicle_locations").
-		Where("vehicle_id = ? AND timestamp BETWEEN ? AND ?", req.VehicleId, req.StartTime, req.EndTime).
+		Where("vehicle_id = ? AND timestamp BETWEEN ? AND ?", req.VehicleId, req.StartTime, req.EndTime).Order("timestamp DESC").
 		Limit(req.Limit).Offset(req.Offset).Count(&totalRow).Find(&responses).Error
 	return
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/ApnanJuanda/transjakarta/lib/response"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gin-gonic/gin"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"gorm.io/gorm"
 	"net/http"
 	"strconv"
@@ -16,9 +17,9 @@ type vehicleLocationController struct {
 	vehicleLocationService vehicle.VehicleServiceInterface
 }
 
-func VehicleLocationController(DB *gorm.DB, client mqtt.Client) *vehicleLocationController {
+func VehicleLocationController(DB *gorm.DB, client mqtt.Client, channel *amqp.Channel) *vehicleLocationController {
 	return &vehicleLocationController{
-		vehicleLocationService: vehicle.NewVehicleService(repository.NewVehicleLocationRepository(DB), client),
+		vehicleLocationService: vehicle.NewVehicleService(repository.NewVehicleLocationRepository(DB), client, channel),
 	}
 }
 
