@@ -1,0 +1,52 @@
+
+services:
+  backend:
+    build: .
+    container_name: transjakarta-backend
+    ports:
+      - "4730:4730"
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - rabbitmq
+      - mqtt
+
+  postgres:
+    image: postgres:15
+    container_name: transjakarta-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: db_transjakarta
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data           # data persistence
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql  # script init database
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: transjakarta-rabbitmq
+    ports:
+      - "5673:5673"       # AMQP port
+      - "15673:15673"     # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+
+  mqtt:
+    image: eclipse-mosquitto:2.0
+    container_name: transjakarta-mqtt
+    ports:
+      - "1883:1883"
+      - "9001:9001"       # Websocket jika diperlukan
+    volumes:
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_config:/mosquitto/config
+
+volumes:
+  pgdata:
+  mosquitto_data:
+  mosquitto_config:

@@ -31,7 +31,6 @@ type (
 		CurrentLon float64 `json:"current_lon"`
 		DestLat    float64 `json:"dest_lat"`
 		DestLon    float64 `json:"dest_lon"`
-		Radius     int     `json:"radius"`
 	}
 
 	Location struct {
