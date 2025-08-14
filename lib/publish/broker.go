@@ -14,7 +14,7 @@ import (
 
 func SetupBroker() (client mqtt.Client, err error) {
 	opts := mqtt.NewClientOptions()
-	opts.AddBroker(env.String("MQTT_BROKER_ADDRESS", "tcp://localhost:1883"))
+	opts.AddBroker(env.String("MQTT_BROKER_ADDRESS", "tcp://mqtt:1883"))
 	opts.SetClientID(env.String("MQTT_PUBLISHER_ID", "vehicle-location-publisher"))
 
 	client = mqtt.NewClient(opts)
@@ -39,7 +39,7 @@ func SetupRabbitMQ() (ch *amqp.Channel, err error) {
 func SetupSubscriber(DB *gorm.DB) {
 	var dataChan = make(chan model.Vehiclelocations, 100)
 	opts := mqtt.NewClientOptions()
-	opts.AddBroker(env.String("MQTT_BROKER_ADDRESS", "tcp://localhost:1883"))
+	opts.AddBroker(env.String("MQTT_BROKER_ADDRESS", "tcp://mqtt:1883"))
 	opts.SetClientID(env.String("MQTT_SUBSCRIBER_ID", "vehicle-location-subscriber"))
 
 	opts.SetDefaultPublishHandler(func(client mqtt.Client, message mqtt.Message) {
